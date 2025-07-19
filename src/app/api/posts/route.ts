@@ -47,8 +47,10 @@ export async function GET(request: NextRequest) {
           { headers }
         );
       }
-      
-      query.userId = user._id;
+
+      // Fix: user may be an array if multiple users are found, but findOne returns a single object or null.
+      // Also, ensure TypeScript knows user is not an array.
+      query.userId = (user as { _id: unknown })._id;
     }
 
     // Create a readable stream
