@@ -62,7 +62,7 @@ export const authOptions = {
           await newUser.save();
         }
       }
-      return true;
+      return true; 
     },
     async session({ session, token }: { session: any; token: any }) {
       if (token.sub) {
