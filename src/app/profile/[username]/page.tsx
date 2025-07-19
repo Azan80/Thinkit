@@ -1,9 +1,9 @@
 'use client';
 
-import { useState, useEffect } from 'react';
-import { useParams } from 'next/navigation';
-import Link from 'next/link';
 import { formatDistanceToNow } from 'date-fns';
+import Link from 'next/link';
+import { useParams } from 'next/navigation';
+import { useEffect, useState } from 'react';
 
 interface User {
   _id: string;
@@ -111,7 +111,7 @@ export default function UserProfile() {
 
       <div className="bg-white rounded-lg shadow-sm border p-6">
         <h2 className="text-xl font-semibold text-gray-900 mb-6">Posts by {user.username}</h2>
-        
+
         {posts.length === 0 ? (
           <div className="text-center py-8">
             <p className="text-gray-500">No posts yet.</p>
@@ -127,19 +127,19 @@ export default function UserProfile() {
                   <span className="text-sm text-gray-400">•</span>
                   <span className="text-sm text-gray-400">{post.upvotes} upvotes</span>
                 </div>
-                
+
                 <Link href={`/posts/${post._id}`}>
                   <h3 className="text-lg font-semibold text-gray-900 mb-2 hover:text-indigo-600">
                     {post.title}
                   </h3>
                 </Link>
-                
+
                 <p className="text-gray-600 mb-3">
-                  {post.content.length > 200 
-                    ? post.content.substring(0, 200) + '...' 
+                  {post.content.length > 200
+                    ? post.content.substring(0, 200) + '...'
                     : post.content}
                 </p>
-                
+
                 <div className="flex items-center space-x-2">
                   {post.tags.map((tag) => (
                     <Link

@@ -4,23 +4,22 @@ import { cn } from '@/lib/utils';
 import {
   ArrowDownIcon,
   ArrowUpIcon,
+  BookmarkIcon,
   ChatBubbleLeftIcon,
-  EyeIcon,
-  FireIcon,
   PlusCircleIcon,
-  SparklesIcon
+  ShareIcon
 } from '@heroicons/react/24/outline';
 import { formatDistanceToNow } from 'date-fns';
-import { AnimatePresence, motion } from 'framer-motion';
+import { motion } from 'framer-motion';
 import { useSession } from 'next-auth/react';
 import Link from 'next/link';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 
 interface Post {
   _id: string;
   title: string;
   content: string;
-  imageUrl?: string;
+  imageUrls?: string[];
   tags: string[];
   upvotes: number;
   createdAt: string;
@@ -31,34 +30,21 @@ interface Post {
   };
 }
 
-interface PostFeedProps {
-  posts: Post[];
-  onVote: (postId: string, value: number) => void;
-}
-
 function PostCard({ post, onVote, index }: { post: Post; onVote: (postId: string, value: number) => void; index: number }) {
   const { data: session } = useSession();
   const [isVoting, setIsVoting] = useState(false);
+  const [isBookmarked, setIsBookmarked] = useState(false);
 
   const handleVote = async (value: number) => {
     if (!session) return;
-
     setIsVoting(true);
     try {
       const response = await fetch('/api/votes', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          postId: post._id,
-          value,
-        }),
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ postId: post._id, value }),
       });
-
-      if (response.ok) {
-        onVote(post._id, value);
-      }
+      if (response.ok) onVote(post._id, value);
     } catch (error) {
       console.error('Error voting:', error);
     } finally {
@@ -66,119 +52,154 @@ function PostCard({ post, onVote, index }: { post: Post; onVote: (postId: string
     }
   };
 
-  const excerpt = post.content.length > 200
-    ? post.content.substring(0, 200) + '...'
-    : post.content;
+  const excerpt = post.content.length > 200 ? post.content.substring(0, 200) + '...' : post.content;
 
   return (
     <motion.div
       initial={{ opacity: 0, y: 20 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ delay: index * 0.1 }}
-      className="group bg-white rounded-2xl shadow-sm border border-gray-100 hover:shadow-xl transition-all duration-300 overflow-hidden"
+      className="bg-white rounded-xl border border-gray-200 hover:border-gray-300 transition-all duration-300"
     >
-      <div className="p-6">
-        <div className="flex items-start space-x-4">
-          {/* Voting Section */}
-          <div className="flex flex-col items-center space-y-2">
-            <button
-              onClick={() => handleVote(1)}
-              disabled={isVoting}
-              className={cn(
-                "p-2 rounded-lg transition-all duration-200 hover:bg-orange-50",
-                isVoting ? "opacity-50 cursor-not-allowed" : "hover:text-orange-500"
-              )}
-            >
-              <ArrowUpIcon className="w-5 h-5" />
-            </button>
-            <span className="text-lg font-bold text-gray-900 min-w-[2rem] text-center">
-              {post.upvotes}
+      <div className="flex">
+        {/* Voting Section */}
+        <div className="flex flex-col items-center py-4 px-2 bg-gray-50 rounded-l-xl">
+          <button
+            onClick={() => handleVote(1)}
+            disabled={isVoting}
+            className={cn(
+              "p-1.5 rounded-lg transition-all",
+              isVoting ? "opacity-50 cursor-not-allowed" : "hover:bg-gray-100 text-gray-500 hover:text-blue-600"
+            )}
+          >
+            <ArrowUpIcon className="w-5 h-5" />
+          </button>
+          <span className="text-sm font-bold text-gray-900 my-1">
+            {post.upvotes}
+          </span>
+          <button
+            onClick={() => handleVote(-1)}
+            disabled={isVoting}
+            className={cn(
+              "p-1.5 rounded-lg transition-all",
+              isVoting ? "opacity-50 cursor-not-allowed" : "hover:bg-gray-100 text-gray-500 hover:text-red-600"
+            )}
+          >
+            <ArrowDownIcon className="w-5 h-5" />
+          </button>
+        </div>
+
+        {/* Content Section */}
+        <div className="flex-1 p-4">
+          {/* Author Info */}
+          <div className="flex items-center space-x-3 mb-3">
+            <Link href={`/profile/${post.userId.username}`} className="flex items-center space-x-2 group">
+              <img
+                src={post.userId.avatarUrl || '/default-avatar.svg'}
+                alt={post.userId.username}
+                className="w-8 h-8 rounded-full border-2 border-gray-100 group-hover:border-gray-200"
+              />
+              <span className="font-medium text-gray-900 group-hover:text-blue-600 transition-colors">
+                {post.userId.username}
+              </span>
+            </Link>
+            <span className="text-gray-400">•</span>
+            <span className="text-sm text-gray-500">
+              {formatDistanceToNow(new Date(post.createdAt), { addSuffix: true })}
             </span>
-            <button
-              onClick={() => handleVote(-1)}
-              disabled={isVoting}
-              className={cn(
-                "p-2 rounded-lg transition-all duration-200 hover:bg-blue-50",
-                isVoting ? "opacity-50 cursor-not-allowed" : "hover:text-blue-500"
-              )}
-            >
-              <ArrowDownIcon className="w-5 h-5" />
-            </button>
           </div>
 
-          {/* Content Section */}
-          <div className="flex-1 min-w-0">
-            {/* Author Info */}
-            <div className="flex items-center space-x-3 mb-4">
-              <div className="relative">
-                <img
-                  src={post.userId.avatarUrl || '/default-avatar.svg'}
-                  alt={post.userId.username}
-                  className="w-8 h-8 rounded-full ring-2 ring-gray-100"
-                />
-              </div>
-              <div className="flex items-center space-x-2">
-                <Link
-                  href={`/profile/${post.userId.username}`}
-                  className="font-medium text-gray-900 hover:text-indigo-600 transition-colors"
-                >
-                  {post.userId.username}
-                </Link>
-                <span className="text-gray-400">•</span>
-                <span className="text-sm text-gray-500">
-                  {formatDistanceToNow(new Date(post.createdAt), { addSuffix: true })}
-                </span>
+          {/* Post Content */}
+          <Link href={`/posts/${post._id}`} className="block group">
+            <div className="flex flex-col md:flex-row gap-4">
+              {post.imageUrls && post.imageUrls.length > 0 && (
+                <div className="md:w-48 flex-shrink-0 relative">
+                  {post.imageUrls.length === 1 ? (
+                    // Single image layout
+                    <div className="h-32 overflow-hidden rounded-lg">
+                      <img
+                        src={post.imageUrls[0]}
+                        alt={post.title}
+                        className="w-full h-full object-cover transform group-hover:scale-105 transition-transform duration-300"
+                      />
+                    </div>
+                  ) : post.imageUrls && (
+                    // Multiple images collage layout
+                    <div className="grid grid-cols-2 gap-1 h-32 rounded-lg overflow-hidden">
+                      {post.imageUrls.slice(0, 4).map((url, index) => (
+                        <div
+                          key={url}
+                          className={cn(
+                            "relative overflow-hidden",
+                            post.imageUrls && post.imageUrls.length === 3 && index === 2 ? "col-span-2" : "",
+                            "h-[60px]"
+                          )}
+                        >
+                          <img
+                            src={url}
+                            alt={`${post.title} - Image ${index + 1}`}
+                            className="w-full h-full object-cover transform group-hover:scale-105 transition-transform duration-300"
+                          />
+                          {index === 3 && post.imageUrls && post.imageUrls.length > 4 && (
+                            <div className="absolute inset-0 bg-black bg-opacity-50 flex items-center justify-center text-white text-sm font-medium">
+                              +{post.imageUrls.length - 4}
+                            </div>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+              <div className="flex-1">
+                <h2 className="text-xl font-bold text-gray-900 group-hover:text-blue-600 transition-colors mb-2">
+                  {post.title}
+                </h2>
+                <p className="text-gray-600 leading-relaxed mb-3">
+                  {excerpt}
+                </p>
               </div>
             </div>
+          </Link>
 
-            {/* Post Title */}
-            <Link href={`/posts/${post._id}`}>
-              <h2 className="text-xl font-bold text-gray-900 mb-3 group-hover:text-indigo-600 transition-colors line-clamp-2">
-                {post.title}
-              </h2>
-            </Link>
+          {/* Tags */}
+          <div className="flex flex-wrap gap-2 mb-3">
+            {post.tags.map((tag) => (
+              <Link
+                key={tag}
+                href={`/?tag=${tag}`}
+                className="inline-flex items-center px-2.5 py-1 rounded-md text-xs font-medium bg-gray-100 text-gray-800 hover:bg-gray-200 transition-colors"
+              >
+                #{tag}
+              </Link>
+            ))}
+          </div>
 
-            {/* Post Image */}
-            {post.imageUrl && (
-              <div className="mb-4">
-                <img
-                  src={post.imageUrl}
-                  alt={post.title}
-                  className="w-full h-48 object-cover rounded-lg"
-                />
-              </div>
-            )}
-
-            {/* Post Content */}
-            <p className="text-gray-600 mb-4 line-clamp-3 leading-relaxed">
-              {excerpt}
-            </p>
-
-            {/* Tags */}
-            <div className="flex items-center space-x-2 mb-4">
-              {post.tags.map((tag) => (
-                <Link
-                  key={tag}
-                  href={`/?tag=${tag}`}
-                  className="inline-flex items-center px-3 py-1 rounded-full text-xs font-medium bg-indigo-50 text-indigo-700 hover:bg-indigo-100 transition-colors"
-                >
-                  <SparklesIcon className="w-3 h-3 mr-1" />
-                  {tag}
-                </Link>
-              ))}
-            </div>
-
-            {/* Engagement Stats */}
-            <div className="flex items-center space-x-4 text-sm text-gray-500">
-              <div className="flex items-center space-x-1">
+          {/* Action Bar */}
+          <div className="flex items-center justify-between pt-3 border-t border-gray-100">
+            <div className="flex items-center space-x-4">
+              <Link
+                href={`/posts/${post._id}#comments`}
+                className="flex items-center space-x-1.5 text-sm text-gray-500 hover:text-gray-900 transition-colors"
+              >
                 <ChatBubbleLeftIcon className="w-4 h-4" />
-                <span>0 comments</span>
-              </div>
-              <div className="flex items-center space-x-1">
-                <EyeIcon className="w-4 h-4" />
-                <span>0 views</span>
-              </div>
+                <span>Comments</span>
+              </Link>
+              <button className="flex items-center space-x-1.5 text-sm text-gray-500 hover:text-gray-900 transition-colors">
+                <ShareIcon className="w-4 h-4" />
+                <span>Share</span>
+              </button>
             </div>
+            <button
+              onClick={() => setIsBookmarked(!isBookmarked)}
+              className={cn(
+                "flex items-center space-x-1.5 text-sm transition-colors",
+                isBookmarked ? "text-blue-600" : "text-gray-500 hover:text-gray-900"
+              )}
+            >
+              <BookmarkIcon className="w-4 h-4" />
+              <span>Save</span>
+            </button>
           </div>
         </div>
       </div>
@@ -193,244 +214,353 @@ export default function HomePage() {
   const [selectedTag, setSelectedTag] = useState<string | null>(null);
   const [popularTags, setPopularTags] = useState<string[]>([]);
   const [activeTab, setActiveTab] = useState<'latest' | 'trending'>('latest');
+  const [page, setPage] = useState(1);
+  const [hasMore, setHasMore] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const observerTarget = useRef<HTMLDivElement>(null);
+  const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    fetchPosts();
-    fetchPopularTags();
-  }, [selectedTag, activeTab]);
+  const fetchPosts = async (reset: boolean = false) => {
+    console.log('fetchPosts called with reset:', reset, 'page:', page);
 
-  const fetchPosts = async () => {
     try {
-      const url = selectedTag ? `/api/posts?tag=${selectedTag}` : '/api/posts';
-      const response = await fetch(url);
-      const data = await response.json();
-      setPosts(data.posts || []);
+      const currentPage = reset ? 1 : page;
+      const url = selectedTag
+        ? `/api/posts?tag=${selectedTag}&page=${currentPage}`
+        : `/api/posts?page=${currentPage}`;
+
+      console.log('Creating EventSource for URL:', url);
+
+      if (reset) {
+        setLoading(true);
+        setPosts([]); // Clear existing posts when resetting
+      } else {
+        setLoadingMore(true);
+      }
+
+      // Create EventSource for streaming
+      const eventSource = new EventSource(url, {
+        withCredentials: true // Important for auth
+      });
+      console.log('EventSource created');
+
+      let postsInCurrentRequest = 0;
+
+      // Handle connection open
+      eventSource.onopen = () => {
+        console.log('EventSource connection opened');
+      };
+
+      // Handle each post as it arrives
+      eventSource.addEventListener('message', (event) => {
+        console.log('EventSource message received:', event.data);
+        try {
+          const data = JSON.parse(event.data);
+          console.log('Parsed data:', data);
+
+          switch (data.type) {
+            case 'posts':
+              console.log('Processing batch posts:', data.data.length);
+              setLoading(false);
+              setPosts(prev => {
+                const newPosts = data.data.filter(
+                  (newPost: Post) => !prev.some(p => p._id === newPost._id)
+                );
+                return [...prev, ...newPosts];
+              });
+              break;
+
+            case 'pagination':
+              console.log('Processing pagination:', data.data);
+              setHasMore(data.data.hasNextPage);
+              setLoadingMore(false);
+              break;
+
+            case 'end':
+              console.log('Stream ended');
+              eventSource.close();
+              break;
+
+            case 'error':
+              console.error('Server error:', data.message);
+              setError(data.message);
+              setLoading(false);
+              setLoadingMore(false);
+              eventSource.close();
+              break;
+
+            default:
+              console.log('Unknown message type:', data.type);
+          }
+        } catch (error) {
+          console.error('Error processing message:', error);
+          setError('Failed to process post data');
+          setLoading(false);
+          setLoadingMore(false);
+          eventSource.close();
+        }
+      });
+
+      // Handle connection errors
+      eventSource.onerror = (error) => {
+        console.error('EventSource failed:', error);
+        setError('Connection failed');
+        setLoading(false);
+        setLoadingMore(false);
+        eventSource.close();
+      };
+
+      // Return cleanup function
+      return () => {
+        console.log('Cleaning up EventSource');
+        eventSource.close();
+      };
+
     } catch (error) {
-      console.error('Error fetching posts:', error);
-    } finally {
+      console.error('Error setting up stream:', error);
+      setError('Failed to load posts');
       setLoading(false);
+      setLoadingMore(false);
+      return () => { }; // Return empty cleanup function
     }
   };
 
+  // Infinite scroll observer
+  useEffect(() => {
+    const loadMorePosts = () => {
+      if (!hasMore || loadingMore) {
+        console.log('Skipping load more:', { hasMore, loadingMore });
+        return;
+      }
+      console.log('Loading more posts...');
+      setPage(prev => prev + 1);
+      fetchPosts(false);
+    };
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        const target = entries[0];
+        if (target.isIntersecting) {
+          console.log('Intersection detected, loading more posts...');
+          loadMorePosts();
+        }
+      },
+      {
+        root: null,
+        rootMargin: '200px',
+        threshold: 0.1
+      }
+    );
+
+    const currentTarget = observerTarget.current;
+    if (currentTarget) {
+      console.log('Observer attached to target');
+      observer.observe(currentTarget);
+    }
+
+    return () => {
+      if (currentTarget) {
+        console.log('Observer detached from target');
+        observer.unobserve(currentTarget);
+        observer.disconnect();
+      }
+    };
+  }, [hasMore, loadingMore, fetchPosts]);
+
+  // Call fetchPosts on mount and when filters change
+  useEffect(() => {
+    console.log('Filter/tab changed, resetting posts...');
+    setPage(1);
+    setPosts([]);
+    let cleanup: (() => void) | undefined;
+
+    // Start fetching posts
+    fetchPosts(true).then(cleanupFn => {
+      cleanup = cleanupFn;
+    });
+
+    fetchPopularTags();
+
+    return () => {
+      if (cleanup) {
+        cleanup();
+      }
+    };
+  }, [selectedTag, activeTab]);
+
   const fetchPopularTags = async () => {
     try {
-      const response = await fetch('/api/posts');
-      const data = await response.json();
-      const allTags = data.posts?.flatMap((post: Post) => post.tags) || [];
-      const tagCounts = allTags.reduce((acc: any, tag: string) => {
-        acc[tag] = (acc[tag] || 0) + 1;
-        return acc;
-      }, {});
+      // Create EventSource for tags
+      const eventSource = new EventSource('/api/posts', {
+        withCredentials: true
+      });
 
-      const popular = Object.entries(tagCounts)
-        .sort(([, a]: any, [, b]: any) => b - a)
-        .slice(0, 10)
-        .map(([tag]) => tag);
+      let allPosts: Post[] = [];
 
-      setPopularTags(popular);
+      eventSource.addEventListener('message', (event) => {
+        try {
+          const data = JSON.parse(event.data);
+
+          if (data.type === 'post') {
+            allPosts.push(data.data);
+          } else if (data.type === 'end') {
+            // Process tags once we have all posts
+            const allTags = allPosts.flatMap(post => post.tags || []);
+            const tagCounts = allTags.reduce((acc: Record<string, number>, tag: string) => {
+              acc[tag] = (acc[tag] || 0) + 1;
+              return acc;
+            }, {});
+
+            const popular = Object.entries(tagCounts)
+              .sort(([, a], [, b]) => b - a)
+              .slice(0, 10)
+              .map(([tag]) => tag);
+
+            setPopularTags(popular);
+            eventSource.close();
+          }
+        } catch (error) {
+          console.error('Error processing tags message:', error);
+          eventSource.close();
+        }
+      });
+
+      eventSource.onerror = (error) => {
+        console.error('Error fetching tags:', error);
+        eventSource.close();
+      };
+
     } catch (error) {
-      console.error('Error fetching popular tags:', error);
+      console.error('Error setting up tags stream:', error);
     }
   };
 
   const handleVote = (postId: string, value: number) => {
     setPosts(posts.map(post =>
-      post._id === postId
-        ? { ...post, upvotes: post.upvotes + value }
-        : post
+      post._id === postId ? { ...post, upvotes: post.upvotes + value } : post
     ));
   };
 
-  if (loading) {
-    return (
-      <div className="space-y-6">
-        {[...Array(5)].map((_, i) => (
-          <motion.div
-            key={i}
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            transition={{ delay: i * 0.1 }}
-            className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6 animate-pulse"
-          >
-            <div className="flex space-x-4">
-              <div className="w-8 h-8 bg-gray-200 rounded-full"></div>
-              <div className="flex-1 space-y-3">
-                <div className="h-4 bg-gray-200 rounded w-3/4"></div>
-                <div className="h-4 bg-gray-200 rounded w-1/2"></div>
-                <div className="h-4 bg-gray-200 rounded w-2/3"></div>
-              </div>
-            </div>
-          </motion.div>
-        ))}
-      </div>
-    );
-  }
-
   return (
-    <div className="max-w-7xl mx-auto">
-      {/* Hero Section */}
-      <motion.div
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        className="text-center mb-12"
-      >
-        <h1 className="text-4xl md:text-6xl font-bold bg-gradient-to-r from-gray-900 via-indigo-800 to-purple-800 bg-clip-text text-transparent mb-4">
-          Share Your Ideas
-        </h1>
-        <p className="text-xl text-gray-600 mb-8 max-w-2xl mx-auto">
-          Join our community of creators, developers, and thinkers. Share your knowledge, discover amazing content, and connect with like-minded people.
-        </p>
-        {session ? (
-          <Link
-            href="/posts/new"
-            className="inline-flex items-center px-8 py-4 bg-gradient-to-r from-indigo-500 to-purple-600 text-white font-semibold rounded-xl hover:shadow-xl transform hover:-translate-y-0.5 transition-all duration-200"
-          >
-            <PlusCircleIcon className="w-6 h-6 mr-2" />
-            Create Your First Post
-          </Link>
-        ) : (
-          <div className="flex items-center justify-center space-x-4">
-            <Link
-              href="/auth/signup"
-              className="inline-flex items-center px-8 py-4 bg-gradient-to-r from-indigo-500 to-purple-600 text-white font-semibold rounded-xl hover:shadow-xl transform hover:-translate-y-0.5 transition-all duration-200"
-            >
-              Get Started
-            </Link>
-            <Link
-              href="/auth/signin"
-              className="inline-flex items-center px-8 py-4 border-2 border-gray-300 text-gray-700 font-semibold rounded-xl hover:border-indigo-500 hover:text-indigo-600 transition-all duration-200"
-            >
-              Sign In
-            </Link>
-          </div>
-        )}
-      </motion.div>
-
-      <div className="grid grid-cols-1 lg:grid-cols-4 gap-8">
-        {/* Main Content */}
-        <div className="lg:col-span-3">
-          {/* Tab Navigation */}
-          <div className="flex items-center space-x-1 bg-gray-100 rounded-xl p-1 mb-8">
+    <div className="flex flex-col lg:flex-row gap-6">
+      {/* Main Content */}
+      <div className="flex-1 min-w-0">
+        {/* Filters and Create Post */}
+        <div className="flex items-center justify-between mb-6">
+          <div className="flex items-center space-x-1">
             <button
               onClick={() => setActiveTab('latest')}
               className={cn(
-                "flex items-center space-x-2 px-4 py-2 rounded-lg font-medium transition-all duration-200",
+                "px-4 py-2 rounded-lg text-sm font-medium transition-colors",
                 activeTab === 'latest'
-                  ? "bg-white text-gray-900 shadow-sm"
-                  : "text-gray-600 hover:text-gray-900"
+                  ? "bg-gray-900 text-white"
+                  : "text-gray-600 hover:text-gray-900 hover:bg-gray-100"
               )}
             >
-              <SparklesIcon className="w-5 h-5" />
-              <span>Latest</span>
+              Latest
             </button>
             <button
               onClick={() => setActiveTab('trending')}
               className={cn(
-                "flex items-center space-x-2 px-4 py-2 rounded-lg font-medium transition-all duration-200",
+                "px-4 py-2 rounded-lg text-sm font-medium transition-colors",
                 activeTab === 'trending'
-                  ? "bg-white text-gray-900 shadow-sm"
-                  : "text-gray-600 hover:text-gray-900"
+                  ? "bg-gray-900 text-white"
+                  : "text-gray-600 hover:text-gray-900 hover:bg-gray-100"
               )}
             >
-              <FireIcon className="w-5 h-5" />
-              <span>Trending</span>
+              Trending
             </button>
           </div>
 
-          {/* Posts */}
-          <AnimatePresence mode="wait">
-            {posts.length === 0 ? (
-              <motion.div
-                key="empty"
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                exit={{ opacity: 0 }}
-                className="text-center py-16"
-              >
-                <div className="w-24 h-24 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
-                  <FireIcon className="w-12 h-12 text-gray-400" />
-                </div>
-                <h3 className="text-xl font-semibold text-gray-900 mb-2">No posts yet</h3>
-                <p className="text-gray-600 mb-6">Be the first to share something amazing!</p>
-                {session && (
-                  <Link
-                    href="/posts/new"
-                    className="inline-flex items-center px-6 py-3 bg-indigo-600 text-white font-medium rounded-lg hover:bg-indigo-700 transition-colors"
-                  >
-                    <PlusCircleIcon className="w-5 h-5 mr-2" />
-                    Create Post
-                  </Link>
-                )}
-              </motion.div>
-            ) : (
-              <motion.div
-                key="posts"
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                exit={{ opacity: 0 }}
-                className="space-y-6"
-              >
-                {posts.map((post, index) => (
-                  <PostCard key={post._id} post={post} onVote={handleVote} index={index} />
-                ))}
-              </motion.div>
-            )}
-          </AnimatePresence>
+          {session && (
+            <Link
+              href="/posts/new"
+              className="flex items-center space-x-2 px-4 py-2 bg-gray-900 text-white rounded-lg hover:bg-gray-800 transition-colors"
+            >
+              <PlusCircleIcon className="w-5 h-5" />
+              <span>Create Post</span>
+            </Link>
+          )}
         </div>
 
-        {/* Sidebar */}
-        <div className="lg:col-span-1">
-          <div className="sticky top-24 space-y-6">
-            {/* Popular Tags */}
-            <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
-              <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center">
-                <FireIcon className="w-5 h-5 mr-2 text-orange-500" />
-                Popular Tags
-              </h3>
-              <div className="space-y-2">
-                {popularTags.map((tag) => (
-                  <button
-                    key={tag}
-                    onClick={() => setSelectedTag(selectedTag === tag ? null : tag)}
-                    className={cn(
-                      "block w-full text-left px-3 py-2 rounded-lg text-sm transition-all duration-200",
-                      selectedTag === tag
-                        ? "bg-indigo-100 text-indigo-700 font-medium"
-                        : "text-gray-600 hover:bg-gray-50 hover:text-gray-900"
-                    )}
-                  >
-                    #{tag}
-                  </button>
+        {/* Posts List */}
+        <div className="space-y-6">
+          {loading ? (
+            // Loading skeleton
+            Array.from({ length: 3 }).map((_, i) => (
+              <div key={i} className="animate-pulse">
+                <div className="h-32 bg-gray-200 rounded-xl mb-4"></div>
+                <div className="h-4 bg-gray-200 rounded w-3/4 mb-2"></div>
+                <div className="h-4 bg-gray-200 rounded w-1/2"></div>
+              </div>
+            ))
+          ) : error ? (
+            <div className="text-center py-12 text-red-600">{error}</div>
+          ) : posts.length === 0 ? (
+            <div className="text-center py-12">
+              <p className="text-gray-600">No posts found</p>
+            </div>
+          ) : (
+            <>
+              <div className="space-y-6">
+                {posts.map((post, index) => (
+                  <PostCard
+                    key={post._id}
+                    post={post}
+                    onVote={handleVote}
+                    index={index}
+                  />
                 ))}
               </div>
-              {selectedTag && (
-                <button
-                  onClick={() => setSelectedTag(null)}
-                  className="mt-4 w-full text-center text-sm text-indigo-600 hover:text-indigo-500 font-medium"
-                >
-                  Clear filter
-                </button>
-              )}
-            </div>
 
-            {/* Community Stats */}
-            <div className="bg-gradient-to-br from-indigo-500 to-purple-600 rounded-2xl p-6 text-white">
-              <h3 className="text-lg font-semibold mb-4">Community Stats</h3>
-              <div className="space-y-3">
-                <div className="flex justify-between">
-                  <span className="text-indigo-100">Total Posts</span>
-                  <span className="font-semibold">{posts.length}</span>
+              {/* Loading more indicator */}
+              {loadingMore && (
+                <div className="py-8 flex justify-center items-center">
+                  <div className="inline-block h-8 w-8 animate-spin rounded-full border-4 border-solid border-gray-900 border-r-transparent align-[-0.125em]" role="status">
+                    <span className="!absolute !-m-px !h-px !w-px !overflow-hidden !whitespace-nowrap !border-0 !p-0 ![clip:rect(0,0,0,0)]">
+                      Loading...
+                    </span>
+                  </div>
                 </div>
-                <div className="flex justify-between">
-                  <span className="text-indigo-100">Active Users</span>
-                  <span className="font-semibold">1,234</span>
+              )}
+
+              {/* Intersection observer target */}
+              <div
+                ref={observerTarget}
+                className="h-px w-full"
+                aria-hidden="true"
+              />
+
+              {/* End of posts message */}
+              {!hasMore && posts.length > 0 && (
+                <div className="text-center py-8 text-gray-600">
+                  No more posts to load
                 </div>
-                <div className="flex justify-between">
-                  <span className="text-indigo-100">Topics</span>
-                  <span className="font-semibold">{popularTags.length}</span>
-                </div>
-              </div>
-            </div>
+              )}
+            </>
+          )}
+        </div>
+      </div>
+
+      {/* Sidebar */}
+      <div className="lg:w-80 flex-shrink-0">
+        <div className="bg-white rounded-xl border border-gray-200 p-6">
+          <h2 className="text-lg font-bold text-gray-900 mb-4">Popular Tags</h2>
+          <div className="space-y-2">
+            {popularTags.map((tag) => (
+              <button
+                key={tag}
+                onClick={() => setSelectedTag(selectedTag === tag ? null : tag)}
+                className={cn(
+                  "block w-full text-left px-4 py-2 rounded-lg text-sm transition-colors",
+                  selectedTag === tag
+                    ? "bg-gray-900 text-white"
+                    : "text-gray-600 hover:bg-gray-100 hover:text-gray-900"
+                )}
+              >
+                #{tag}
+              </button>
+            ))}
           </div>
         </div>
       </div>
