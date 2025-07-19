@@ -25,36 +25,36 @@ export default function Header() {
     };
 
     return (
-        <header className="sticky top-0 z-50 backdrop-blur-xl bg-white/80 border-b border-gray-200/50">
-            <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-                <div className="flex justify-between items-center h-16">
+        <header className="sticky top-0 z-50 bg-white border-b border-gray-200">
+            <div className="max-w-7xl mx-auto">
+                <div className="flex justify-between items-center h-16 px-4 sm:px-6 lg:px-8">
                     {/* Logo */}
                     <div className="flex items-center">
-                        <Link href="/" className="flex items-center space-x-3 group">
+                        <Link href="/" className="flex items-center space-x-3">
                             <div className="relative">
-                                <div className="w-10 h-10 bg-gradient-to-br from-indigo-500 to-purple-600 rounded-xl flex items-center justify-center shadow-lg group-hover:shadow-xl transition-all duration-300">
+                                <div className="w-9 h-9 bg-black rounded-lg flex items-center justify-center">
                                     <span className="text-white font-bold text-lg">S</span>
                                 </div>
-                                <div className="absolute -top-1 -right-1 w-4 h-4 bg-green-400 rounded-full border-2 border-white"></div>
+                                <div className="absolute -top-1 -right-1 w-3 h-3 bg-blue-500 rounded-full border-2 border-white"></div>
                             </div>
-                            <span className="text-2xl font-bold bg-gradient-to-r from-gray-900 to-gray-600 bg-clip-text text-transparent">
+                            <span className="text-xl font-bold text-gray-900">
                                 SocialApp
                             </span>
                         </Link>
                     </div>
 
                     {/* Desktop Navigation */}
-                    <nav className="hidden md:flex items-center space-x-8">
+                    <nav className="hidden md:flex items-center space-x-1">
                         <Link
                             href="/"
-                            className="flex items-center space-x-2 text-gray-700 hover:text-indigo-600 px-3 py-2 rounded-lg hover:bg-gray-50 transition-all duration-200"
+                            className="flex items-center space-x-2 text-gray-600 hover:text-gray-900 px-3 py-2 rounded-md hover:bg-gray-100 transition-colors"
                         >
                             <HomeIcon className="w-5 h-5" />
                             <span className="font-medium">Home</span>
                         </Link>
                         <Link
                             href="/posts/new"
-                            className="flex items-center space-x-2 text-gray-700 hover:text-indigo-600 px-3 py-2 rounded-lg hover:bg-gray-50 transition-all duration-200"
+                            className="flex items-center space-x-2 text-gray-600 hover:text-gray-900 px-3 py-2 rounded-md hover:bg-gray-100 transition-colors"
                         >
                             <PlusCircleIcon className="w-5 h-5" />
                             <span className="font-medium">Create</span>
@@ -62,7 +62,7 @@ export default function Header() {
                         {session?.user && (
                             <Link
                                 href={`/profile/${session.user.name}`}
-                                className="flex items-center space-x-2 text-gray-700 hover:text-indigo-600 px-3 py-2 rounded-lg hover:bg-gray-50 transition-all duration-200"
+                                className="flex items-center space-x-2 text-gray-600 hover:text-gray-900 px-3 py-2 rounded-md hover:bg-gray-100 transition-colors"
                             >
                                 <UserCircleIcon className="w-5 h-5" />
                                 <span className="font-medium">Profile</span>
@@ -77,7 +77,7 @@ export default function Header() {
                             <input
                                 type="text"
                                 placeholder="Search posts..."
-                                className="w-full pl-10 pr-4 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent bg-gray-50 hover:bg-white transition-all duration-200"
+                                className="w-full pl-10 pr-4 py-2 bg-gray-100 border border-transparent rounded-md focus:outline-none focus:bg-white focus:border-gray-300 transition-colors"
                             />
                         </div>
                     </div>
@@ -92,19 +92,19 @@ export default function Header() {
                         ) : session ? (
                             <div className="relative">
                                 <div className="flex items-center space-x-3">
-                                    <button className="relative p-2 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-all duration-200">
+                                    <button className="relative p-2 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-md transition-colors">
                                         <BellIcon className="w-6 h-6" />
-                                        <div className="absolute -top-1 -right-1 w-3 h-3 bg-red-500 rounded-full"></div>
+                                        <div className="absolute -top-1 -right-1 w-3 h-3 bg-blue-500 rounded-full"></div>
                                     </button>
 
                                     <button
                                         onClick={() => setIsProfileOpen(!isProfileOpen)}
-                                        className="flex items-center space-x-3 p-2 rounded-lg hover:bg-gray-100 transition-all duration-200"
+                                        className="flex items-center space-x-3 p-2 rounded-md hover:bg-gray-100 transition-colors"
                                     >
                                         <img
                                             src={session.user?.image || '/default-avatar.svg'}
                                             alt="Avatar"
-                                            className="w-8 h-8 rounded-full ring-2 ring-gray-200"
+                                            className="w-8 h-8 rounded-full border border-gray-200"
                                         />
                                         <span className="text-sm font-medium text-gray-700 hidden lg:block">
                                             {session.user?.name}
@@ -118,9 +118,9 @@ export default function Header() {
                                             initial={{ opacity: 0, y: -10 }}
                                             animate={{ opacity: 1, y: 0 }}
                                             exit={{ opacity: 0, y: -10 }}
-                                            className="absolute right-0 mt-2 w-56 bg-white rounded-xl shadow-lg border border-gray-200 py-2 z-50"
+                                            className="absolute right-0 mt-2 w-56 bg-white rounded-lg shadow-lg border border-gray-200 py-2 z-50"
                                         >
-                                            <div className="px-4 py-3 border-b border-gray-100">
+                                            <div className="px-4 py-2 border-b border-gray-100">
                                                 <p className="text-sm font-medium text-gray-900">{session.user?.name}</p>
                                                 <p className="text-sm text-gray-500">{session.user?.email}</p>
                                             </div>
@@ -154,13 +154,13 @@ export default function Header() {
                             <div className="flex items-center space-x-3">
                                 <Link
                                     href="/auth/signin"
-                                    className="text-gray-700 hover:text-indigo-600 px-4 py-2 rounded-lg hover:bg-gray-50 transition-all duration-200 font-medium"
+                                    className="text-gray-700 hover:text-gray-900 px-4 py-2 rounded-md hover:bg-gray-100 transition-colors font-medium"
                                 >
                                     Sign in
                                 </Link>
                                 <Link
                                     href="/auth/signup"
-                                    className="bg-gradient-to-r from-indigo-500 to-purple-600 text-white px-6 py-2 rounded-lg font-medium hover:shadow-lg transform hover:-translate-y-0.5 transition-all duration-200"
+                                    className="bg-black text-white px-4 py-2 rounded-md font-medium hover:bg-gray-900 transition-colors"
                                 >
                                     Sign up
                                 </Link>
@@ -170,7 +170,7 @@ export default function Header() {
                         {/* Mobile menu button */}
                         <button
                             onClick={() => setIsMenuOpen(!isMenuOpen)}
-                            className="md:hidden p-2 rounded-lg hover:bg-gray-100 transition-all duration-200"
+                            className="md:hidden p-2 rounded-md hover:bg-gray-100 transition-colors"
                         >
                             {isMenuOpen ? (
                                 <XMarkIcon className="w-6 h-6" />
@@ -188,12 +188,12 @@ export default function Header() {
                             initial={{ opacity: 0, height: 0 }}
                             animate={{ opacity: 1, height: 'auto' }}
                             exit={{ opacity: 0, height: 0 }}
-                            className="md:hidden border-t border-gray-200 py-4"
+                            className="md:hidden border-t border-gray-200 py-2"
                         >
-                            <div className="space-y-2">
+                            <div className="space-y-1 px-4">
                                 <Link
                                     href="/"
-                                    className="flex items-center space-x-3 px-4 py-2 text-gray-700 hover:text-indigo-600 hover:bg-gray-50 rounded-lg transition-all duration-200"
+                                    className="flex items-center space-x-3 px-3 py-2 text-gray-700 hover:text-gray-900 hover:bg-gray-100 rounded-md transition-colors"
                                     onClick={() => setIsMenuOpen(false)}
                                 >
                                     <HomeIcon className="w-5 h-5" />
@@ -201,7 +201,7 @@ export default function Header() {
                                 </Link>
                                 <Link
                                     href="/posts/new"
-                                    className="flex items-center space-x-3 px-4 py-2 text-gray-700 hover:text-indigo-600 hover:bg-gray-50 rounded-lg transition-all duration-200"
+                                    className="flex items-center space-x-3 px-3 py-2 text-gray-700 hover:text-gray-900 hover:bg-gray-100 rounded-md transition-colors"
                                     onClick={() => setIsMenuOpen(false)}
                                 >
                                     <PlusCircleIcon className="w-5 h-5" />
@@ -210,7 +210,7 @@ export default function Header() {
                                 {session?.user && (
                                     <Link
                                         href={`/profile/${session.user.name}`}
-                                        className="flex items-center space-x-3 px-4 py-2 text-gray-700 hover:text-indigo-600 hover:bg-gray-50 rounded-lg transition-all duration-200"
+                                        className="flex items-center space-x-3 px-3 py-2 text-gray-700 hover:text-gray-900 hover:bg-gray-100 rounded-md transition-colors"
                                         onClick={() => setIsMenuOpen(false)}
                                     >
                                         <UserCircleIcon className="w-5 h-5" />

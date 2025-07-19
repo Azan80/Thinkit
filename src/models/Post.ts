@@ -18,10 +18,9 @@ const postSchema = new mongoose.Schema({
     required: true,
     minlength: 1,
   },
-  imageUrl: {
+  imageUrls: [{
     type: String,
-    default: null,
-  },
+  }],
   tags: [{
     type: String,
     trim: true,
@@ -36,9 +35,17 @@ const postSchema = new mongoose.Schema({
 });
 
 // Create indexes for better query performance
-postSchema.index({ createdAt: -1 });
-postSchema.index({ userId: 1 });
-postSchema.index({ tags: 1 });
-postSchema.index({ upvotes: -1 });
+// Compound index for the most common query pattern: tags + sorting by date
+postSchema.index({ tags: 1, createdAt: -1 });
+
+// Compound index for user posts sorted by date
+postSchema.index({ userId: 1, createdAt: -1 });
+
+// Single field indexes for other common operations
+postSchema.index({ createdAt: -1 }); // For global feed sorting
+postSchema.index({ upvotes: -1 }); // For potential "top posts" feature
+
+// Add text index for potential future text search
+postSchema.index({ title: 'text', content: 'text' });
 
 export default mongoose.models.Post || mongoose.model('Post', postSchema); 

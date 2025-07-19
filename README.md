@@ -1,4 +1,4 @@
-# SocialApp - Reddit/Dev.to Style Social Platform
+# SocialApp
 
 A modern social web application built with Next.js, MongoDB, and NextAuth.js. Features include user authentication, post creation with markdown support, voting system, comments, and user profiles.
 
