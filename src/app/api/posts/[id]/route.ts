@@ -1,6 +1,5 @@
 import { authOptions } from '@/lib/auth';
-import dbConnect from '@/lib/db/db';
-import Post from '@/models/Post';
+import { supabase } from '@/lib/supabase/client';
 import { Session } from '@/types';
 import { getServerSession } from 'next-auth';
 import { NextRequest, NextResponse } from 'next/server';
@@ -11,21 +10,44 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    await dbConnect();
-    
     const { id } = await params;
-    const post = await Post.findById(id)
-      .populate('userId', 'username avatarUrl bio')
-      .lean();
+    
+    const { data: post, error } = await supabase
+      .from('posts')
+      .select(`
+        *,
+        profile:profiles(
+          username,
+          avatar_url
+        )
+      `)
+      .eq('id', id)
+      .single();
 
-    if (!post) {
+    if (error || !post) {
       return NextResponse.json(
         { error: 'Post not found' },
         { status: 404 }
       );
     }
 
-    return NextResponse.json(post);
+    // Transform to match expected format
+    const transformedPost = {
+      _id: post.id,
+      title: post.title,
+      content: post.content,
+      imageUrls: post.image_urls || [],
+      tags: post.tags || [],
+      upvotes: post.upvotes || 0,
+      createdAt: post.created_at,
+      userId: {
+        _id: post.user_id,
+        username: post.profile?.username,
+        avatarUrl: post.profile?.avatar_url
+      }
+    };
+
+    return NextResponse.json(transformedPost);
   } catch (error) {
     console.error('Error fetching post:', error);
     return NextResponse.json(
@@ -50,19 +72,23 @@ export async function PUT(
       );
     }
 
-    await dbConnect();
-    
     const { id } = await params;
-    const post = await Post.findById(id);
     
-    if (!post) {
+    // Check if post exists and user owns it
+    const { data: post, error: postError } = await supabase
+      .from('posts')
+      .select('user_id')
+      .eq('id', id)
+      .single();
+
+    if (postError || !post) {
       return NextResponse.json(
         { error: 'Post not found' },
         { status: 404 }
       );
     }
 
-    if (post.userId.toString() !== session.user.id) {
+    if (post.user_id !== session.user.id) {
       return NextResponse.json(
         { error: 'Not authorized to update this post' },
         { status: 403 }
@@ -71,17 +97,49 @@ export async function PUT(
 
     const { title, content, tags } = await request.json();
 
-    if (title) post.title = title;
-    if (content) post.content = content;
-    if (tags) post.tags = tags;
+    // Update post
+    const { data: updatedPost, error: updateError } = await supabase
+      .from('posts')
+      .update({
+        title: title || undefined,
+        content: content || undefined,
+        tags: tags || undefined,
+      })
+      .eq('id', id)
+      .select(`
+        *,
+        profile:profiles(
+          username,
+          avatar_url
+        )
+      `)
+      .single();
 
-    await post.save();
+    if (updateError) {
+      console.error('Error updating post:', updateError);
+      return NextResponse.json(
+        { error: 'Failed to update post' },
+        { status: 500 }
+      );
+    }
 
-    const updatedPost = await Post.findById(post._id)
-      .populate('userId', 'username avatarUrl')
-      .lean();
+    // Transform to match expected format
+    const transformedPost = {
+      _id: updatedPost.id,
+      title: updatedPost.title,
+      content: updatedPost.content,
+      imageUrls: updatedPost.image_urls || [],
+      tags: updatedPost.tags || [],
+      upvotes: updatedPost.upvotes || 0,
+      createdAt: updatedPost.created_at,
+      userId: {
+        _id: updatedPost.user_id,
+        username: updatedPost.profile?.username,
+        avatarUrl: updatedPost.profile?.avatar_url
+      }
+    };
 
-    return NextResponse.json(updatedPost);
+    return NextResponse.json(transformedPost);
   } catch (error) {
     console.error('Error updating post:', error);
     return NextResponse.json(
@@ -106,26 +164,42 @@ export async function DELETE(
       );
     }
 
-    await dbConnect();
-    
     const { id } = await params;
-    const post = await Post.findById(id);
     
-    if (!post) {
+    // Check if post exists and user owns it
+    const { data: post, error: postError } = await supabase
+      .from('posts')
+      .select('user_id')
+      .eq('id', id)
+      .single();
+
+    if (postError || !post) {
       return NextResponse.json(
         { error: 'Post not found' },
         { status: 404 }
       );
     }
 
-    if (post.userId.toString() !== session.user.id) {
+    if (post.user_id !== session.user.id) {
       return NextResponse.json(
         { error: 'Not authorized to delete this post' },
         { status: 403 }
       );
     }
 
-    await Post.findByIdAndDelete(id);
+    // Delete post
+    const { error: deleteError } = await supabase
+      .from('posts')
+      .delete()
+      .eq('id', id);
+
+    if (deleteError) {
+      console.error('Error deleting post:', deleteError);
+      return NextResponse.json(
+        { error: 'Failed to delete post' },
+        { status: 500 }
+      );
+    }
 
     return NextResponse.json({ message: 'Post deleted successfully' });
   } catch (error) {

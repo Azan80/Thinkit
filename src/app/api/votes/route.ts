@@ -1,26 +1,21 @@
 import { authOptions } from '@/lib/auth';
-import dbConnect from '@/lib/db/db';
-import Post from '@/models/Post';
-import User from '@/models/User';
-import Vote from '@/models/Vote';
+import { supabase } from '@/lib/supabase/client';
 import { Session } from '@/types';
 import { getServerSession } from 'next-auth';
 import { NextRequest, NextResponse } from 'next/server';
 
 // POST /api/votes - Vote on a post
-export async function POST(request: NextRequest )  {
+export async function POST(request: NextRequest) {
   try {
     const session = await getServerSession(authOptions as any) as Session | null;
     
-    if (!session?.user?.id ) {
+    if (!session?.user?.id) {
       return NextResponse.json(
         { error: 'Authentication required' },
         { status: 401 }
       );
     }
 
-    await dbConnect();
-    
     const { postId, value } = await request.json();
 
     if (!postId || ![1, -1].includes(value)) {
@@ -30,26 +25,14 @@ export async function POST(request: NextRequest )  {
       );
     }
 
-    // Handle both Google OAuth users (string ID) and regular users (ObjectId)
-    let user;
-    if (session.user.email) {
-      // For Google OAuth users, find by email
-      user = await User.findOne({ email: session.user.email });
-    } else {
-      // For regular users, try to find by ObjectId
-      user = await User.findById(session.user.id);
-    }
-
-    if (!user) {
-      return NextResponse.json(
-        { error: 'User not found' },
-        { status: 404 }
-      );
-    }
-
     // Check if post exists
-    const post = await Post.findById(postId);
-    if (!post) {
+    const { data: post, error: postError } = await supabase
+      .from('posts')
+      .select('id, upvotes')
+      .eq('id', postId)
+      .single();
+
+    if (postError || !post) {
       return NextResponse.json(
         { error: 'Post not found' },
         { status: 404 }
@@ -57,52 +40,80 @@ export async function POST(request: NextRequest )  {
     }
 
     // Check if user already voted
-    const existingVote = await Vote.findOne({
-      userId: user._id,
-      postId,
-    });
+    const { data: existingVote, error: voteError } = await supabase
+      .from('votes')
+      .select('*')
+      .eq('user_id', session.user.id)
+      .eq('post_id', postId)
+      .single();
+
+    if (voteError && voteError.code !== 'PGRST116') {
+      // PGRST116 means no rows found, which is expected
+      console.error('Error checking existing vote:', voteError);
+      return NextResponse.json(
+        { error: 'Failed to check existing vote' },
+        { status: 500 }
+      );
+    }
+
+    let newUpvotes = post.upvotes;
 
     if (existingVote) {
       if (existingVote.value === value) {
         // Remove vote if same value
-        await Vote.findByIdAndDelete(existingVote._id);
-        await Post.findByIdAndUpdate(postId, {
-          $inc: { upvotes: -value },
-        });
+        await supabase
+          .from('votes')
+          .delete()
+          .eq('id', existingVote.id);
+
+        newUpvotes -= value;
       } else {
         // Update vote
-        existingVote.value = value;
-        await existingVote.save();
-        await Post.findByIdAndUpdate(postId, {
-          $inc: { upvotes: value * 2 }, // Double the change since we're flipping
-        });
+        await supabase
+          .from('votes')
+          .update({ value })
+          .eq('id', existingVote.id);
+
+        newUpvotes += value * 2; // Double the change since we're flipping
       }
     } else {
       // Create new vote
-      const vote = new Vote({
-        userId: user._id,
-        postId,
-        value,
-      });
-      await vote.save();
-      await Post.findByIdAndUpdate(postId, {
-        $inc: { upvotes: value },
-      });
+      const { error: insertError } = await supabase
+        .from('votes')
+        .insert({
+          user_id: session.user.id,
+          post_id: postId,
+          value,
+        });
+
+      if (insertError) {
+        console.error('Error creating vote:', insertError);
+        return NextResponse.json(
+          { error: 'Failed to create vote' },
+          { status: 500 }
+        );
+      }
+
+      newUpvotes += value;
     }
 
-    // Get updated post
-    const updatedPost = await Post.findById(postId).lean();
+    // Update post upvotes
+    const { error: updateError } = await supabase
+      .from('posts')
+      .update({ upvotes: newUpvotes })
+      .eq('id', postId);
 
-    if (!updatedPost) {
+    if (updateError) {
+      console.error('Error updating post upvotes:', updateError);
       return NextResponse.json(
-        { error: 'Failed to retrieve updated post' },
+        { error: 'Failed to update post upvotes' },
         { status: 500 }
       );
     }
 
     return NextResponse.json({
       message: 'Vote recorded successfully',
-      upvotes: (updatedPost as any).upvotes,
+      upvotes: newUpvotes,
     });
   } catch (error) {
     console.error('Error voting on post:', error);
