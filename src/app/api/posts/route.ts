@@ -1,7 +1,5 @@
 import { authOptions } from '@/lib/auth';
-import dbConnect from '@/lib/db/db';
-import Post from '@/models/Post';
-import User from '@/models/User';
+import { supabase } from '@/lib/supabase/client';
 import { Session } from '@/types';
 import { getServerSession } from 'next-auth';
 import { NextRequest } from 'next/server';
@@ -15,18 +13,29 @@ export async function GET(request: NextRequest) {
   });
 
   try {
-    await dbConnect();
-    
     const { searchParams } = new URL(request.url);
     const page = parseInt(searchParams.get('page') || '1');
     const limit = parseInt(searchParams.get('limit') || '8');
     const tag = searchParams.get('tag');
     const userId = searchParams.get('userId');
-    const skip = (page - 1) * limit;
+    const offset = (page - 1) * limit;
 
-    // Build query with proper index usage
-    let query: any = {};
-    if (tag) query.tags = tag;
+    // Build base query
+    let baseQuery = supabase
+      .from('posts')
+      .select(`
+        *,
+        profile:profiles(
+          username,
+          avatar_url
+        )
+      `, { count: 'exact' });
+
+    // Apply filters
+    if (tag) {
+      baseQuery = baseQuery.contains('tags', [tag]);
+    }
+
     if (userId) {
       const session = await getServerSession(authOptions as any) as Session | null;
       if (!session?.user?.id) {
@@ -35,49 +44,63 @@ export async function GET(request: NextRequest) {
           { headers }
         );
       }
-      
-      const user = await User.findOne({ username: userId })
-        .select('_id')
-        .lean()
-        .exec();
-        
-      if (!user) {
+
+      // Get user by username
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('id')
+        .eq('username', userId)
+        .single();
+
+      if (!profile) {
         return new Response(
           `data: ${JSON.stringify({ type: 'error', message: 'User not found' })}\n\n`,
           { headers }
         );
       }
 
-      // Fix: user may be an array if multiple users are found, but findOne returns a single object or null.
-      // Also, ensure TypeScript knows user is not an array.
-      query.userId = (user as { _id: unknown })._id;
+      baseQuery = baseQuery.eq('user_id', profile.id);
     }
 
     // Create a readable stream
     const stream = new ReadableStream({
       async start(controller) {
         try {
-          // Execute queries in parallel
-          const [posts, totalPosts] = await Promise.all([
-            Post.find(query)
-              .select('title content imageUrls tags createdAt userId upvotes')
-              .populate('userId', 'username avatarUrl -_id')
-              .sort({ createdAt: -1 })
-              .skip(skip)
-              .limit(limit)
-              .lean({ virtuals: true })
-              .exec(),
-            Post.countDocuments(query)
-          ]);
+          // Get posts with count
+          const { data: posts, error: postsError, count } = await baseQuery
+            .order('created_at', { ascending: false })
+            .range(offset, offset + limit - 1);
 
+          if (postsError) {
+            console.error('Error fetching posts:', postsError);
+            throw postsError;
+          }
+
+          const totalPosts = count || 0;
           const totalPages = Math.ceil(totalPosts / limit);
 
-          // Send all posts in one batch for better performance
-          if (posts.length > 0) {
+          // Transform posts to match the expected format
+          const transformedPosts = (posts || []).map(post => ({
+            _id: post.id,
+            title: post.title,
+            content: post.content,
+            imageUrls: post.image_urls || [],
+            tags: post.tags || [],
+            upvotes: post.upvotes || 0,
+            createdAt: post.created_at,
+            userId: {
+              _id: post.user_id,
+              username: post.profile?.username,
+              avatarUrl: post.profile?.avatar_url
+            }
+          }));
+
+          // Send all posts in one batch
+          if (transformedPosts.length > 0) {
             controller.enqueue(
               `data: ${JSON.stringify({ 
                 type: 'posts', 
-                data: posts 
+                data: transformedPosts 
               })}\n\n`
             );
           }
@@ -104,6 +127,7 @@ export async function GET(request: NextRequest) {
           // Close the stream
           controller.close();
         } catch (error) {
+          console.error('Stream error:', error);
           controller.error(error);
         }
       }
@@ -125,29 +149,10 @@ export async function POST(request: NextRequest) {
   try {
     const session = await getServerSession(authOptions as any) as Session | null;
     
-    if (!session?.user?.id ) {
+    if (!session?.user?.id) {
       return new Response(
         JSON.stringify({ error: 'Authentication required' }),
         { status: 401 }
-      );
-    }
-
-    await dbConnect();
-    
-    // Handle both Google OAuth users (string ID) and regular users (ObjectId)
-    let user;
-    if (session.user.email) {
-      // For Google OAuth users, find by email
-      user = await User.findOne({ email: session.user.email });
-    } else {
-      // For regular users, try to find by ObjectId
-      user = await User.findById(session.user.id);
-    }
-
-    if (!user) {
-      return new Response(
-        JSON.stringify({ error: 'User not found' }),
-        { status: 404 }
       );
     }
 
@@ -180,41 +185,138 @@ export async function POST(request: NextRequest) {
     const formEntries = Array.from(formData.entries());
     const imageFiles = formEntries.filter(([key]) => key.startsWith('image'));
 
+    console.log('Found image files:', imageFiles.length);
+
     // Process each image
     for (const [_, file] of imageFiles) {
       if (file instanceof File && file.size > 0) {
+        console.log('Processing image:', file.name, 'Size:', file.size);
+        
         // Check file size (limit to 5MB)
         if (file.size > 5 * 1024 * 1024) {
+          console.error('Image too large:', file.name, file.size);
           return new Response(
             JSON.stringify({ error: 'Each image must be less than 5MB' }),
             { status: 400 }
           );
         }
         
-        // Convert image to base64
-        const bytes = await file.arrayBuffer();
-        const buffer = Buffer.from(bytes);
-        const base64String = buffer.toString('base64');
-        const mimeType = file.type;
-        imageUrls.push(`data:${mimeType};base64,${base64String}`);
+        // Generate unique filename
+        const fileExtension = file.name.split('.').pop() || 'jpg';
+        const fileName = `${Date.now()}-${Math.random().toString(36).substring(2)}.${fileExtension}`;
+        
+        console.log('Uploading image with filename:', fileName);
+        
+        try {
+          // Upload image to Supabase Storage
+          const { data: uploadData, error: uploadError } = await supabase
+            .storage
+            .from('post-images')
+            .upload(fileName, file, {
+              cacheControl: '3600',
+              upsert: false
+            });
+
+          if (uploadError) {
+            console.error('Error uploading image:', uploadError);
+            // Continue with other images instead of failing completely
+            continue;
+          }
+
+          console.log('Image uploaded successfully:', uploadData);
+
+          // Get public URL
+          const { data: { publicUrl } } = supabase
+            .storage
+            .from('post-images')
+            .getPublicUrl(fileName);
+
+          console.log('Public URL generated:', publicUrl);
+          imageUrls.push(publicUrl);
+          
+        } catch (error) {
+          console.error('Exception during image upload:', error);
+          // Continue with other images
+          continue;
+        }
       }
     }
 
-    const post = new Post({
-      userId: user._id,
-      title,
-      content,
-      imageUrls, // Updated to store multiple image URLs
-      tags,
-    });
+    console.log('Final image URLs:', imageUrls);
 
-    await post.save();
+    // First, get the user's profile
+    let { data: profile, error: profileError } = await supabase
+      .from('profiles')
+      .select('id, username, avatar_url')
+      .eq('id', session.user.id)
+      .single();
 
-    const populatedPost = await Post.findById(post._id)
-      .populate('userId', 'username avatarUrl')
-      .lean();
+    // If profile doesn't exist, create a basic one
+    if (profileError || !profile) {
+      console.log('Profile not found, creating basic profile for user:', session.user.id);
+      
+      const { data: newProfile, error: createError } = await supabase
+        .from('profiles')
+        .insert({
+          id: session.user.id,
+          email: session.user.email || '',
+          username: session.user.name || session.user.email?.split('@')[0] || 'user',
+          avatar_url: session.user.image || null,
+        })
+        .select('id, username, avatar_url')
+        .single();
 
-    return new Response(JSON.stringify(populatedPost), { status: 201 });
+      if (createError) {
+        console.error('Error creating profile:', createError);
+        return new Response(
+          JSON.stringify({ error: 'Failed to create user profile' }),
+          { status: 500 }
+        );
+      }
+      
+      profile = newProfile;
+    }
+
+    // Create post in Supabase
+    const { data: post, error: postError } = await supabase
+      .from('posts')
+      .insert({
+        user_id: profile.id,
+        title,
+        content,
+        image_urls: imageUrls,
+        tags,
+        upvotes: 0
+      })
+      .select('*')
+      .single();
+
+    if (postError) {
+      console.error('Error creating post:', postError);
+      throw postError;
+    }
+
+    if (!post) {
+      throw new Error('Failed to create post');
+    }
+
+    // Transform post to match the expected format
+    const transformedPost = {
+      _id: post.id,
+      title: post.title,
+      content: post.content,
+      imageUrls: post.image_urls || [],
+      tags: post.tags || [],
+      upvotes: post.upvotes || 0,
+      createdAt: post.created_at,
+      userId: {
+        _id: profile.id,
+        username: profile.username,
+        avatarUrl: profile.avatar_url
+      }
+    };
+
+    return new Response(JSON.stringify(transformedPost), { status: 201 });
   } catch (error) {
     console.error('Error creating post:', error);
     return new Response(

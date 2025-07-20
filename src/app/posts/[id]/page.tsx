@@ -345,7 +345,7 @@ export default function PostDetail() {
                 {/* Comment Form */}
                 {session ? (
                     <form onSubmit={handleSubmitComment} className="mb-8">
-                        <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+                        <div className="bg-white text-black rounded-xl border border-gray-200 overflow-hidden">
                             <textarea
                                 value={newComment}
                                 onChange={(e) => setNewComment(e.target.value)}

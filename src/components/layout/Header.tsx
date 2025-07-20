@@ -1,5 +1,6 @@
 'use client';
 
+import { supabase } from '@/lib/supabase/client';
 import {
     Bars3Icon,
     BellIcon,
@@ -13,16 +14,38 @@ import { AnimatePresence, motion } from 'framer-motion';
 import { signOut, useSession } from 'next-auth/react';
 import Link from 'next/link';
 import { useState } from 'react';
+import { useSupabaseSession } from './Providers';
 
 export default function Header() {
-    const { data: session, status } = useSession();
+    const { data: nextAuthSession, status: nextAuthStatus } = useSession();
+    const { session: supabaseSession, loading: supabaseLoading } = useSupabaseSession();
     const [isMenuOpen, setIsMenuOpen] = useState(false);
     const [isProfileOpen, setIsProfileOpen] = useState(false);
 
+    // Determine which session to use
+    const session = nextAuthSession || supabaseSession;
+    const isLoading = nextAuthStatus === 'loading' || supabaseLoading;
+
     const handleSignOut = async () => {
-        await signOut({ callbackUrl: '/' });
+        // Sign out from both NextAuth and Supabase
+        if (nextAuthSession) {
+            await signOut({ callbackUrl: '/' });
+        }
+        if (supabaseSession) {
+            await supabase.auth.signOut();
+        }
         setIsProfileOpen(false);
     };
+
+    // Get user info from either session
+    const user = session?.user || supabaseSession?.user;
+    const userName = nextAuthSession?.user?.name ||
+        supabaseSession?.user?.user_metadata?.full_name ||
+        user?.email?.split('@')[0];
+    const userEmail = user?.email;
+    const userImage = nextAuthSession?.user?.image ||
+        supabaseSession?.user?.user_metadata?.avatar_url ||
+        '/default-avatar.svg';
 
     return (
         <header className="sticky top-0 z-50 bg-white border-b border-gray-200">
@@ -59,9 +82,9 @@ export default function Header() {
                             <PlusCircleIcon className="w-5 h-5" />
                             <span className="font-medium">Create</span>
                         </Link>
-                        {session?.user && (
+                        {user && (
                             <Link
-                                href={`/profile/${session.user.name}`}
+                                href={`/profile/${userName}`}
                                 className="flex items-center space-x-2 text-gray-600 hover:text-gray-900 px-3 py-2 rounded-md hover:bg-gray-100 transition-colors"
                             >
                                 <UserCircleIcon className="w-5 h-5" />
@@ -84,12 +107,12 @@ export default function Header() {
 
                     {/* User Menu */}
                     <div className="flex items-center space-x-4">
-                        {status === 'loading' ? (
+                        {isLoading ? (
                             <div className="animate-pulse flex space-x-2">
                                 <div className="w-8 h-8 bg-gray-200 rounded-full"></div>
                                 <div className="w-20 h-4 bg-gray-200 rounded"></div>
                             </div>
-                        ) : session ? (
+                        ) : user ? (
                             <div className="relative">
                                 <div className="flex items-center space-x-3">
                                     <button className="relative p-2 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-md transition-colors">
@@ -102,12 +125,12 @@ export default function Header() {
                                         className="flex items-center space-x-3 p-2 rounded-md hover:bg-gray-100 transition-colors"
                                     >
                                         <img
-                                            src={session.user?.image || '/default-avatar.svg'}
+                                            src={userImage}
                                             alt="Avatar"
                                             className="w-8 h-8 rounded-full border border-gray-200"
                                         />
                                         <span className="text-sm font-medium text-gray-700 hidden lg:block">
-                                            {session.user?.name}
+                                            {userName}
                                         </span>
                                     </button>
                                 </div>
@@ -121,12 +144,12 @@ export default function Header() {
                                             className="absolute right-0 mt-2 w-56 bg-white rounded-lg shadow-lg border border-gray-200 py-2 z-50"
                                         >
                                             <div className="px-4 py-2 border-b border-gray-100">
-                                                <p className="text-sm font-medium text-gray-900">{session.user?.name}</p>
-                                                <p className="text-sm text-gray-500">{session.user?.email}</p>
+                                                <p className="text-sm font-medium text-gray-900">{userName}</p>
+                                                <p className="text-sm text-gray-500">{userEmail}</p>
                                             </div>
                                             <div className="py-1">
                                                 <Link
-                                                    href={`/profile/${session.user?.name}`}
+                                                    href={`/profile/${userName}`}
                                                     className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 transition-colors"
                                                     onClick={() => setIsProfileOpen(false)}
                                                 >
@@ -207,9 +230,9 @@ export default function Header() {
                                     <PlusCircleIcon className="w-5 h-5" />
                                     <span>Create Post</span>
                                 </Link>
-                                {session?.user && (
+                                {user && (
                                     <Link
-                                        href={`/profile/${session.user.name}`}
+                                        href={`/profile/${userName}`}
                                         className="flex items-center space-x-3 px-3 py-2 text-gray-700 hover:text-gray-900 hover:bg-gray-100 rounded-md transition-colors"
                                         onClick={() => setIsMenuOpen(false)}
                                     >

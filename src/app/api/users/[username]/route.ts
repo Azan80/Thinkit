@@ -1,5 +1,4 @@
-import dbConnect from '@/lib/db/db';
-import User from '@/models/User';
+import { supabase } from '@/lib/supabase/client';
 import { NextRequest, NextResponse } from 'next/server';
 
 export async function GET(
@@ -7,21 +6,31 @@ export async function GET(
   { params }: { params: Promise<{ username: string }> }
 ) {
   try {
-    await dbConnect();
-    
     const { username } = await params;
-    const user = await User.findOne({ username })
-      .select('-password')
-      .lean();
+    
+    const { data: user, error } = await supabase
+      .from('profiles')
+      .select('id, username, email, avatar_url, created_at')
+      .eq('username', username)
+      .single();
 
-    if (!user) {
+    if (error || !user) {
       return NextResponse.json(
         { error: 'User not found' },
         { status: 404 }
       );
     }
 
-    return NextResponse.json(user);
+    // Transform to match expected format
+    const transformedUser = {
+      _id: user.id,
+      username: user.username,
+      email: user.email,
+      avatarUrl: user.avatar_url,
+      createdAt: user.created_at,
+    };
+
+    return NextResponse.json(transformedUser);
   } catch (error) {
     console.error('Error fetching user:', error);
     return NextResponse.json(
