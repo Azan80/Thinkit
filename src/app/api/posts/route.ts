@@ -1,24 +1,21 @@
 import { authOptions } from '@/lib/auth';
-import { supabase } from '@/lib/supabase/client';
+import { supabase, supabaseAdmin } from '@/lib/supabase/client';
 import { Session } from '@/types';
 import { getServerSession } from 'next-auth';
-import { NextRequest } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 
 export async function GET(request: NextRequest) {
-  // Set up headers for SSE
-  const headers = new Headers({
-    'Content-Type': 'text/event-stream',
-    'Cache-Control': 'no-cache',
-    'Connection': 'keep-alive',
-  });
-
   try {
+    console.log('Posts API called');
+    
     const { searchParams } = new URL(request.url);
     const page = parseInt(searchParams.get('page') || '1');
     const limit = parseInt(searchParams.get('limit') || '8');
     const tag = searchParams.get('tag');
     const userId = searchParams.get('userId');
     const offset = (page - 1) * limit;
+
+    console.log('Query parameters:', { page, limit, tag, userId, offset });
 
     // Build base query
     let baseQuery = supabase
@@ -31,17 +28,21 @@ export async function GET(request: NextRequest) {
         )
       `, { count: 'exact' });
 
+    console.log('Base query built');
+
     // Apply filters
     if (tag) {
+      console.log('Applying tag filter:', tag);
       baseQuery = baseQuery.contains('tags', [tag]);
     }
 
     if (userId) {
+      console.log('Applying user filter:', userId);
       const session = await getServerSession(authOptions as any) as Session | null;
       if (!session?.user?.id) {
-        return new Response(
-          `data: ${JSON.stringify({ type: 'error', message: 'Authentication required' })}\n\n`,
-          { headers }
+        return NextResponse.json(
+          { error: 'Authentication required' },
+          { status: 401 }
         );
       }
 
@@ -53,93 +54,72 @@ export async function GET(request: NextRequest) {
         .single();
 
       if (!profile) {
-        return new Response(
-          `data: ${JSON.stringify({ type: 'error', message: 'User not found' })}\n\n`,
-          { headers }
+        return NextResponse.json(
+          { error: 'User not found' },
+          { status: 404 }
         );
       }
 
       baseQuery = baseQuery.eq('user_id', profile.id);
     }
 
-    // Create a readable stream
-    const stream = new ReadableStream({
-      async start(controller) {
-        try {
-          // Get posts with count
-          const { data: posts, error: postsError, count } = await baseQuery
-            .order('created_at', { ascending: false })
-            .range(offset, offset + limit - 1);
+    console.log('Executing query...');
 
-          if (postsError) {
-            console.error('Error fetching posts:', postsError);
-            throw postsError;
-          }
+    // Get posts with count
+    const { data: posts, error: postsError, count } = await baseQuery
+      .order('created_at', { ascending: false })
+      .range(offset, offset + limit - 1);
 
-          const totalPosts = count || 0;
-          const totalPages = Math.ceil(totalPosts / limit);
+    console.log('Query executed, posts:', posts?.length, 'error:', postsError);
 
-          // Transform posts to match the expected format
-          const transformedPosts = (posts || []).map(post => ({
-            _id: post.id,
-            title: post.title,
-            content: post.content,
-            imageUrls: post.image_urls || [],
-            tags: post.tags || [],
-            upvotes: post.upvotes || 0,
-            createdAt: post.created_at,
-            userId: {
-              _id: post.user_id,
-              username: post.profile?.username,
-              avatarUrl: post.profile?.avatar_url
-            }
-          }));
+    if (postsError) {
+      console.error('Error fetching posts:', postsError);
+      return NextResponse.json(
+        { error: 'Failed to fetch posts', details: postsError.message },
+        { status: 500 }
+      );
+    }
 
-          // Send all posts in one batch
-          if (transformedPosts.length > 0) {
-            controller.enqueue(
-              `data: ${JSON.stringify({ 
-                type: 'posts', 
-                data: transformedPosts 
-              })}\n\n`
-            );
-          }
+    const totalPosts = count || 0;
+    const totalPages = Math.ceil(totalPosts / limit);
 
-          // Send pagination info
-          controller.enqueue(
-            `data: ${JSON.stringify({
-              type: 'pagination',
-              data: {
-                currentPage: page,
-                totalPages,
-                totalPosts,
-                hasNextPage: page < totalPages,
-                hasPrevPage: page > 1,
-              }
-            })}\n\n`
-          );
+    console.log('Transforming posts...');
 
-          // Send end message
-          controller.enqueue(
-            `data: ${JSON.stringify({ type: 'end' })}\n\n`
-          );
+    // Transform posts to match the expected format
+    const transformedPosts = (posts || []).map(post => ({
+      _id: post.id,
+      title: post.title,
+      content: post.content,
+      imageUrls: post.image_urls || [],
+      tags: post.tags || [],
+      upvotes: post.upvotes || 0,
+      views: 0, // Temporarily set to 0 while fixing the query
+      createdAt: post.created_at,
+      userId: {
+        _id: post.user_id,
+        username: post.profile?.username,
+        avatarUrl: post.profile?.avatar_url
+      }
+    }));
 
-          // Close the stream
-          controller.close();
-        } catch (error) {
-          console.error('Stream error:', error);
-          controller.error(error);
-        }
+    console.log('Posts transformed, returning response');
+
+    return NextResponse.json({
+      posts: transformedPosts,
+      pagination: {
+        currentPage: page,
+        totalPages,
+        totalPosts,
+        hasNextPage: page < totalPages,
+        hasPrevPage: page > 1,
       }
     });
 
-    return new Response(stream, { headers });
-
   } catch (error) {
-    console.error('Error fetching posts:', error);
-    return new Response(
-      `data: ${JSON.stringify({ type: 'error', message: 'Failed to fetch posts' })}\n\n`,
-      { headers }
+    console.error('Error in posts API:', error);
+    return NextResponse.json(
+      { error: 'Failed to fetch posts', details: error instanceof Error ? error.message : 'Unknown error' },
+      { status: 500 }
     );
   }
 }
@@ -244,8 +224,8 @@ export async function POST(request: NextRequest) {
 
     console.log('Final image URLs:', imageUrls);
 
-    // First, get the user's profile
-    let { data: profile, error: profileError } = await supabase
+    // First, get the user's profile using admin client
+    let { data: profile, error: profileError } = await supabaseAdmin
       .from('profiles')
       .select('id, username, avatar_url')
       .eq('id', session.user.id)
@@ -255,68 +235,96 @@ export async function POST(request: NextRequest) {
     if (profileError || !profile) {
       console.log('Profile not found, creating basic profile for user:', session.user.id);
       
-      const { data: newProfile, error: createError } = await supabase
-        .from('profiles')
-        .insert({
+      try {
+        const { data: newProfile, error: createError } = await supabaseAdmin
+          .from('profiles')
+          .insert({
+            id: session.user.id,
+            email: session.user.email || '',
+            username: session.user.name || session.user.email?.split('@')[0] || 'user',
+            avatar_url: session.user.image || null,
+          })
+          .select('id, username, avatar_url')
+          .single();
+
+        if (createError) {
+          console.error('Error creating profile:', createError);
+          // Continue without creating profile, use session data
+          profile = {
+            id: session.user.id,
+            username: session.user.name || session.user.email?.split('@')[0] || 'user',
+            avatar_url: session.user.image || null,
+          };
+        } else {
+          profile = newProfile;
+        }
+      } catch (error) {
+        console.error('Exception during profile creation:', error);
+        // Continue without creating profile, use session data
+        profile = {
           id: session.user.id,
-          email: session.user.email || '',
           username: session.user.name || session.user.email?.split('@')[0] || 'user',
           avatar_url: session.user.image || null,
+        };
+      }
+    }
+
+    // Create post in Supabase using admin client
+    console.log('Creating post with supabaseAdmin...');
+    
+    try {
+      const { data: post, error: postError } = await supabaseAdmin
+        .from('posts')
+        .insert({
+          user_id: profile.id,
+          title,
+          content,
+          image_urls: imageUrls,
+          tags,
+          upvotes: 0
         })
-        .select('id, username, avatar_url')
+        .select('*')
         .single();
 
-      if (createError) {
-        console.error('Error creating profile:', createError);
-        return new Response(
-          JSON.stringify({ error: 'Failed to create user profile' }),
-          { status: 500 }
-        );
+      console.log('Post creation result:', { post, error: postError });
+
+      if (postError) {
+        console.error('Error creating post:', postError);
+        throw postError;
       }
-      
-      profile = newProfile;
-    }
 
-    // Create post in Supabase
-    const { data: post, error: postError } = await supabase
-      .from('posts')
-      .insert({
-        user_id: profile.id,
-        title,
-        content,
-        image_urls: imageUrls,
-        tags,
-        upvotes: 0
-      })
-      .select('*')
-      .single();
-
-    if (postError) {
-      console.error('Error creating post:', postError);
-      throw postError;
-    }
-
-    if (!post) {
-      throw new Error('Failed to create post');
-    }
-
-    // Transform post to match the expected format
-    const transformedPost = {
-      _id: post.id,
-      title: post.title,
-      content: post.content,
-      imageUrls: post.image_urls || [],
-      tags: post.tags || [],
-      upvotes: post.upvotes || 0,
-      createdAt: post.created_at,
-      userId: {
-        _id: profile.id,
-        username: profile.username,
-        avatarUrl: profile.avatar_url
+      if (!post) {
+        throw new Error('Failed to create post');
       }
-    };
 
-    return new Response(JSON.stringify(transformedPost), { status: 201 });
+      // Transform post to match the expected format
+      const transformedPost = {
+        _id: post.id,
+        title: post.title,
+        content: post.content,
+        imageUrls: post.image_urls || [],
+        tags: post.tags || [],
+        upvotes: post.upvotes || 0,
+        views: 0, // New posts start with 0 views
+        createdAt: post.created_at,
+        userId: {
+          _id: profile.id,
+          username: profile.username,
+          avatarUrl: profile.avatar_url
+        }
+      };
+
+      return new Response(JSON.stringify(transformedPost), { status: 201 });
+    } catch (error) {
+      console.error('Exception during post creation:', error);
+      return new Response(
+        JSON.stringify({ 
+          error: 'Failed to create post', 
+          details: error instanceof Error ? error.message : 'Unknown error'
+        }),
+        { status: 500 }
+      );
+    }
   } catch (error) {
     console.error('Error creating post:', error);
     return new Response(

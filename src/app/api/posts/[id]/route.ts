@@ -1,5 +1,5 @@
 import { authOptions } from '@/lib/auth';
-import { supabase } from '@/lib/supabase/client';
+import { supabase, supabaseAdmin } from '@/lib/supabase/client';
 import { Session } from '@/types';
 import { getServerSession } from 'next-auth';
 import { NextRequest, NextResponse } from 'next/server';
@@ -39,6 +39,7 @@ export async function GET(
       imageUrls: post.image_urls || [],
       tags: post.tags || [],
       upvotes: post.upvotes || 0,
+      views: 0, // Temporarily set to 0 while fixing the query
       createdAt: post.created_at,
       userId: {
         _id: post.user_id,
@@ -75,7 +76,7 @@ export async function PUT(
     const { id } = await params;
     
     // Check if post exists and user owns it
-    const { data: post, error: postError } = await supabase
+    const { data: post, error: postError } = await supabaseAdmin
       .from('posts')
       .select('user_id')
       .eq('id', id)
@@ -98,7 +99,7 @@ export async function PUT(
     const { title, content, tags } = await request.json();
 
     // Update post
-    const { data: updatedPost, error: updateError } = await supabase
+    const { data: updatedPost, error: updateError } = await supabaseAdmin
       .from('posts')
       .update({
         title: title || undefined,
@@ -167,7 +168,7 @@ export async function DELETE(
     const { id } = await params;
     
     // Check if post exists and user owns it
-    const { data: post, error: postError } = await supabase
+    const { data: post, error: postError } = await supabaseAdmin
       .from('posts')
       .select('user_id')
       .eq('id', id)
@@ -188,7 +189,7 @@ export async function DELETE(
     }
 
     // Delete post
-    const { error: deleteError } = await supabase
+    const { error: deleteError } = await supabaseAdmin
       .from('posts')
       .delete()
       .eq('id', id);

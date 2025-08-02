@@ -1,5 +1,5 @@
 import { authOptions } from '@/lib/auth';
-import { supabase } from '@/lib/supabase/client';
+import { supabaseAdmin } from '@/lib/supabase/client';
 import { Session } from '@/types';
 import { getServerSession } from 'next-auth';
 import { NextRequest, NextResponse } from 'next/server';
@@ -26,7 +26,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Check if post exists
-    const { data: post, error: postError } = await supabase
+    const { data: post, error: postError } = await supabaseAdmin
       .from('posts')
       .select('id, upvotes')
       .eq('id', postId)
@@ -40,7 +40,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Check if user already voted
-    const { data: existingVote, error: voteError } = await supabase
+    const { data: existingVote, error: voteError } = await supabaseAdmin
       .from('votes')
       .select('*')
       .eq('user_id', session.user.id)
@@ -61,7 +61,7 @@ export async function POST(request: NextRequest) {
     if (existingVote) {
       if (existingVote.value === value) {
         // Remove vote if same value
-        await supabase
+        await supabaseAdmin
           .from('votes')
           .delete()
           .eq('id', existingVote.id);
@@ -69,7 +69,7 @@ export async function POST(request: NextRequest) {
         newUpvotes -= value;
       } else {
         // Update vote
-        await supabase
+        await supabaseAdmin
           .from('votes')
           .update({ value })
           .eq('id', existingVote.id);
@@ -78,7 +78,7 @@ export async function POST(request: NextRequest) {
       }
     } else {
       // Create new vote
-      const { error: insertError } = await supabase
+      const { error: insertError } = await supabaseAdmin
         .from('votes')
         .insert({
           user_id: session.user.id,
@@ -98,7 +98,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Update post upvotes
-    const { error: updateError } = await supabase
+    const { error: updateError } = await supabaseAdmin
       .from('posts')
       .update({ upvotes: newUpvotes })
       .eq('id', postId);

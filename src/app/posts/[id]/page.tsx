@@ -5,6 +5,7 @@ import {
     ArrowDownIcon,
     ArrowUpIcon,
     BookmarkIcon,
+    EyeIcon,
     ShareIcon
 } from '@heroicons/react/24/outline';
 import { formatDistanceToNow } from 'date-fns';
@@ -22,6 +23,7 @@ interface Post {
     imageUrls?: string[];
     tags: string[];
     upvotes: number;
+    views: number;
     createdAt: string;
     userId: {
         _id: string;
@@ -53,11 +55,37 @@ export default function PostDetail() {
     const [isBookmarked, setIsBookmarked] = useState(false);
     const [newComment, setNewComment] = useState('');
     const [isSubmittingComment, setIsSubmittingComment] = useState(false);
+    const [viewCount, setViewCount] = useState(0);
 
     useEffect(() => {
         fetchPost();
         fetchComments();
-    }, [id]);
+        fetchViewCount();
+        // Track view when post page loads (user is already viewing the post)
+        if (session?.user) {
+            trackView();
+        }
+    }, [id, session?.user]);
+
+    const trackView = async () => {
+        if (!session?.user) return;
+
+        try {
+            const response = await fetch(`/api/posts/${id}/view`, {
+                method: 'POST',
+            });
+
+            if (response.ok) {
+                const data = await response.json();
+                // Update the view count if it's a new view
+                if (data.isNewView) {
+                    setViewCount(data.views);
+                }
+            }
+        } catch (error) {
+            console.error('Error tracking view:', error);
+        }
+    };
 
     const fetchPost = async () => {
         try {
@@ -82,6 +110,18 @@ export default function PostDetail() {
             }
         } catch (error) {
             console.error('Error fetching comments:', error);
+        }
+    };
+
+    const fetchViewCount = async () => {
+        try {
+            const response = await fetch(`/api/posts/${id}/views`);
+            if (response.ok) {
+                const data = await response.json();
+                setViewCount(data.views);
+            }
+        } catch (error) {
+            console.error('Error fetching view count:', error);
         }
     };
 
@@ -240,9 +280,16 @@ export default function PostDetail() {
                                         <span className="font-medium text-gray-900 group-hover:text-blue-600 transition-colors block">
                                             {post.userId.username}
                                         </span>
-                                        <span className="text-sm text-gray-500">
-                                            {formatDistanceToNow(new Date(post.createdAt), { addSuffix: true })}
-                                        </span>
+                                        <div className="flex items-center space-x-2 text-sm text-gray-500">
+                                            <span>
+                                                {formatDistanceToNow(new Date(post.createdAt), { addSuffix: true })}
+                                            </span>
+                                            <span>•</span>
+                                            <div className="flex items-center space-x-1">
+                                                <EyeIcon className="w-4 h-4" />
+                                                <span>{viewCount} views</span>
+                                            </div>
+                                        </div>
                                     </div>
                                 </Link>
                             </div>

@@ -1,5 +1,5 @@
 import { authOptions } from '@/lib/auth';
-import { supabase } from '@/lib/supabase/client';
+import { supabase, supabaseAdmin } from '@/lib/supabase/client';
 import { Session } from '@/types';
 import { getServerSession } from 'next-auth';
 import { NextRequest, NextResponse } from 'next/server';
@@ -98,7 +98,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Create comment in Supabase
-    const { data: comment, error } = await supabase
+    const { data: comment, error } = await supabaseAdmin
       .from('comments')
       .insert({
         post_id: postId,

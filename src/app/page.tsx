@@ -6,6 +6,7 @@ import {
   ArrowUpIcon,
   BookmarkIcon,
   ChatBubbleLeftIcon,
+  EyeIcon,
   PlusCircleIcon,
   ShareIcon
 } from '@heroicons/react/24/outline';
@@ -22,6 +23,7 @@ interface Post {
   imageUrls?: string[];
   tags: string[];
   upvotes: number;
+  views: number;
   createdAt: string;
   userId: {
     _id: string;
@@ -34,6 +36,76 @@ function PostCard({ post, onVote, index }: { post: Post; onVote: (postId: string
   const { data: session } = useSession();
   const [isVoting, setIsVoting] = useState(false);
   const [isBookmarked, setIsBookmarked] = useState(false);
+  const [hasTrackedView, setHasTrackedView] = useState(false);
+  const [viewCount, setViewCount] = useState(0);
+  const postRef = useRef<HTMLDivElement>(null);
+
+  // Fetch view count when component mounts
+  useEffect(() => {
+    fetchViewCount();
+  }, [post._id]);
+
+  const fetchViewCount = async () => {
+    try {
+      const response = await fetch(`/api/posts/${post._id}/views`);
+      if (response.ok) {
+        const data = await response.json();
+        setViewCount(data.views);
+      }
+    } catch (error) {
+      console.error('Error fetching view count:', error);
+    }
+  };
+
+  // Track view when post comes into view
+  useEffect(() => {
+    if (!session?.user || hasTrackedView) return;
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        entries.forEach((entry) => {
+          if (entry.isIntersecting && !hasTrackedView) {
+            trackView();
+            setHasTrackedView(true);
+          }
+        });
+      },
+      {
+        threshold: 0.5, // Trigger when 50% of the post is visible
+        rootMargin: '0px 0px -100px 0px' // Trigger slightly before the post is fully in view
+      }
+    );
+
+    if (postRef.current) {
+      observer.observe(postRef.current);
+    }
+
+    return () => {
+      if (postRef.current) {
+        observer.unobserve(postRef.current);
+      }
+    };
+  }, [session?.user, hasTrackedView, post._id]);
+
+  const trackView = async () => {
+    if (!session?.user || hasTrackedView) return;
+
+    try {
+      const response = await fetch(`/api/posts/${post._id}/view`, {
+        method: 'POST',
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        // Update the view count if it's a new view
+        if (data.isNewView) {
+          setViewCount(data.views);
+        }
+      }
+    } catch (error) {
+      console.error('Error tracking view:', error);
+    }
+  };
 
   const handleVote = async (value: number) => {
     if (!session) return;
@@ -56,6 +128,7 @@ function PostCard({ post, onVote, index }: { post: Post; onVote: (postId: string
 
   return (
     <motion.div
+      ref={postRef}
       initial={{ opacity: 0, y: 20 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ delay: index * 0.1 }}
@@ -185,6 +258,10 @@ function PostCard({ post, onVote, index }: { post: Post; onVote: (postId: string
                 <ChatBubbleLeftIcon className="w-4 h-4" />
                 <span>Comments</span>
               </Link>
+              <div className="flex items-center space-x-1.5 text-sm text-gray-500">
+                <EyeIcon className="w-4 h-4" />
+                <span>{viewCount} views</span>
+              </div>
               <button className="flex items-center space-x-1.5 text-sm text-gray-500 hover:text-gray-900 transition-colors">
                 <ShareIcon className="w-4 h-4" />
                 <span>Share</span>
@@ -229,7 +306,7 @@ export default function HomePage() {
         ? `/api/posts?tag=${selectedTag}&page=${currentPage}`
         : `/api/posts?page=${currentPage}`;
 
-      console.log('Creating EventSource for URL:', url);
+      console.log('Fetching posts from URL:', url);
 
       if (reset) {
         setLoading(true);
@@ -238,90 +315,37 @@ export default function HomePage() {
         setLoadingMore(true);
       }
 
-      // Create EventSource for streaming
-      const eventSource = new EventSource(url, {
-        withCredentials: true // Important for auth
-      });
-      console.log('EventSource created');
+      // Use regular fetch instead of EventSource
+      const response = await fetch(url);
 
-      let postsInCurrentRequest = 0;
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
 
-      // Handle connection open
-      eventSource.onopen = () => {
-        console.log('EventSource connection opened');
-      };
+      const data = await response.json();
 
-      // Handle each post as it arrives
-      eventSource.addEventListener('message', (event) => {
-        console.log('EventSource message received:', event.data);
-        try {
-          const data = JSON.parse(event.data);
-          console.log('Parsed data:', data);
+      if (data.error) {
+        throw new Error(data.error);
+      }
 
-          switch (data.type) {
-            case 'posts':
-              console.log('Processing batch posts:', data.data.length);
-              setLoading(false);
-              setPosts(prev => {
-                const newPosts = data.data.filter(
-                  (newPost: Post) => !prev.some(p => p._id === newPost._id)
-                );
-                return [...prev, ...newPosts];
-              });
-              break;
+      const newPosts = data.posts || [];
+      const pagination = data.pagination || {};
 
-            case 'pagination':
-              console.log('Processing pagination:', data.data);
-              setHasMore(data.data.hasNextPage);
-              setLoadingMore(false);
-              break;
+      if (reset) {
+        setPosts(newPosts);
+      } else {
+        setPosts(prevPosts => [...prevPosts, ...newPosts]);
+      }
 
-            case 'end':
-              console.log('Stream ended');
-              eventSource.close();
-              break;
-
-            case 'error':
-              console.error('Server error:', data.message);
-              setError(data.message);
-              setLoading(false);
-              setLoadingMore(false);
-              eventSource.close();
-              break;
-
-            default:
-              console.log('Unknown message type:', data.type);
-          }
-        } catch (error) {
-          console.error('Error processing message:', error);
-          setError('Failed to process post data');
-          setLoading(false);
-          setLoadingMore(false);
-          eventSource.close();
-        }
-      });
-
-      // Handle connection errors
-      eventSource.onerror = (error) => {
-        console.error('EventSource failed:', error);
-        setError('Connection failed');
-        setLoading(false);
-        setLoadingMore(false);
-        eventSource.close();
-      };
-
-      // Return cleanup function
-      return () => {
-        console.log('Cleaning up EventSource');
-        eventSource.close();
-      };
+      setHasMore(pagination.hasNextPage || false);
+      setPage(currentPage + 1);
 
     } catch (error) {
-      console.error('Error setting up stream:', error);
-      setError('Failed to load posts');
+      console.error('Error fetching posts:', error);
+      setError(error instanceof Error ? error.message : 'Failed to fetch posts');
+    } finally {
       setLoading(false);
       setLoadingMore(false);
-      return () => { }; // Return empty cleanup function
     }
   };
 
@@ -372,66 +396,45 @@ export default function HomePage() {
     console.log('Filter/tab changed, resetting posts...');
     setPage(1);
     setPosts([]);
-    let cleanup: (() => void) | undefined;
 
     // Start fetching posts
-    fetchPosts(true).then(cleanupFn => {
-      cleanup = cleanupFn;
-    });
+    fetchPosts(true);
 
     fetchPopularTags();
-
-    return () => {
-      if (cleanup) {
-        cleanup();
-      }
-    };
   }, [selectedTag, activeTab]);
 
   const fetchPopularTags = async () => {
     try {
-      // Create EventSource for tags
-      const eventSource = new EventSource('/api/posts', {
-        withCredentials: true
-      });
+      const response = await fetch('/api/posts?limit=100');
 
-      let allPosts: Post[] = [];
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
 
-      eventSource.addEventListener('message', (event) => {
-        try {
-          const data = JSON.parse(event.data);
+      const data = await response.json();
 
-          if (data.type === 'post') {
-            allPosts.push(data.data);
-          } else if (data.type === 'end') {
-            // Process tags once we have all posts
-            const allTags = allPosts.flatMap(post => post.tags || []);
-            const tagCounts = allTags.reduce((acc: Record<string, number>, tag: string) => {
-              acc[tag] = (acc[tag] || 0) + 1;
-              return acc;
-            }, {});
+      if (data.error) {
+        throw new Error(data.error);
+      }
 
-            const popular = Object.entries(tagCounts)
-              .sort(([, a], [, b]) => b - a)
-              .slice(0, 10)
-              .map(([tag]) => tag);
+      const allPosts = data.posts || [];
 
-            setPopularTags(popular);
-            eventSource.close();
-          }
-        } catch (error) {
-          console.error('Error processing tags message:', error);
-          eventSource.close();
-        }
-      });
+      // Process tags from all posts
+      const allTags = allPosts.flatMap((post: Post) => post.tags || []);
+      const tagCounts = allTags.reduce((acc: Record<string, number>, tag: string) => {
+        acc[tag] = (acc[tag] || 0) + 1;
+        return acc;
+      }, {});
 
-      eventSource.onerror = (error) => {
-        console.error('Error fetching tags:', error);
-        eventSource.close();
-      };
+      const popular = Object.entries(tagCounts)
+        .sort(([, a], [, b]) => (b as number) - (a as number))
+        .slice(0, 10)
+        .map(([tag]) => tag);
+
+      setPopularTags(popular);
 
     } catch (error) {
-      console.error('Error setting up tags stream:', error);
+      console.error('Error fetching popular tags:', error);
     }
   };
 

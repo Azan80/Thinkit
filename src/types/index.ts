@@ -14,6 +14,7 @@ export interface Post {
   content: string;
   tags: string[];
   upvotes: number;
+  views: number;
   createdAt: Date;
   author?: User;
 }

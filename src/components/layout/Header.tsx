@@ -22,8 +22,9 @@ export default function Header() {
     const [isMenuOpen, setIsMenuOpen] = useState(false);
     const [isProfileOpen, setIsProfileOpen] = useState(false);
 
-    // Determine which session to use
-    const session = nextAuthSession || supabaseSession;
+    // Only consider user logged in if they have a NextAuth session
+    // Supabase session alone (from email verification) should not show user as logged in
+    const isLoggedIn = !!nextAuthSession;
     const isLoading = nextAuthStatus === 'loading' || supabaseLoading;
 
     const handleSignOut = async () => {
@@ -37,15 +38,11 @@ export default function Header() {
         setIsProfileOpen(false);
     };
 
-    // Get user info from either session
-    const user = session?.user || supabaseSession?.user;
-    const userName = nextAuthSession?.user?.name ||
-        supabaseSession?.user?.user_metadata?.full_name ||
-        user?.email?.split('@')[0];
+    // Get user info only from NextAuth session
+    const user = nextAuthSession?.user;
+    const userName = nextAuthSession?.user?.name || user?.email?.split('@')[0];
     const userEmail = user?.email;
-    const userImage = nextAuthSession?.user?.image ||
-        supabaseSession?.user?.user_metadata?.avatar_url ||
-        '/default-avatar.svg';
+    const userImage = nextAuthSession?.user?.image || '/default-avatar.svg';
 
     return (
         <header className="sticky top-0 z-50 bg-white border-b border-gray-200">
@@ -82,7 +79,7 @@ export default function Header() {
                             <PlusCircleIcon className="w-5 h-5" />
                             <span className="font-medium">Create</span>
                         </Link>
-                        {user && (
+                        {isLoggedIn && (
                             <Link
                                 href={`/profile/${userName}`}
                                 className="flex items-center space-x-2 text-gray-600 hover:text-gray-900 px-3 py-2 rounded-md hover:bg-gray-100 transition-colors"
@@ -112,7 +109,7 @@ export default function Header() {
                                 <div className="w-8 h-8 bg-gray-200 rounded-full"></div>
                                 <div className="w-20 h-4 bg-gray-200 rounded"></div>
                             </div>
-                        ) : user ? (
+                        ) : isLoggedIn ? (
                             <div className="relative">
                                 <div className="flex items-center space-x-3">
                                     <button className="relative p-2 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-md transition-colors">
@@ -230,7 +227,7 @@ export default function Header() {
                                     <PlusCircleIcon className="w-5 h-5" />
                                     <span>Create Post</span>
                                 </Link>
-                                {user && (
+                                {isLoggedIn && (
                                     <Link
                                         href={`/profile/${userName}`}
                                         className="flex items-center space-x-3 px-3 py-2 text-gray-700 hover:text-gray-900 hover:bg-gray-100 rounded-md transition-colors"
